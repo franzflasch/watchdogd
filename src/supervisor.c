@@ -290,6 +290,25 @@ static void timeout_cb(uev_t *w, void *arg, int events)
 	action(w->ctx, p, WDOG_FAILED_TO_MEET_DEADLINE, 0);
 }
 
+/* Allocates a new client and starts the timer */
+void *supervisor_add_client(uev_ctx_t *ctx, pid_t pid, char *label, unsigned int timeout)
+{
+	struct supervisor *p;
+
+	p = allocate(pid, label, timeout);
+	if (p) {
+		printf("allocated: %d %s %d\n", pid, label, timeout);
+		uev_timer_init(ctx, &p->watcher, timeout_cb, p,
+					p->timeout + 500, p->timeout + 500);
+	}
+	else
+	{
+		printf("error allocating resource!\n");
+	}
+
+	return p;
+}
+
 int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 {
 	struct supervisor *p;
@@ -304,9 +323,23 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 
 	switch (req->cmd) {
 	case WDOG_SUBSCRIBE_CMD:
+		/* first check if a matching mandatory client exists */
+		for (i = 0, clients_cnt = 0; i < NELEMS(process); i++) {
+			if (process[i].id != -1) {
+				if(!strcmp(req->label, process[i].label)) {
+					/* update to the actual pid */
+					process[i].pid = req->pid;
+					next_ack(p, req);
+					DEBUG("%s[%d] next ack: %d", req->label, req->pid,
+						req->next_ack);
+					break;
+				}
+			}
+		}
+
 		/* Start timer, return ID from allocated timer. */
 		DEBUG("Hello %s[%d].", req->label, req->pid);
-		p = allocate(req->pid, req->label, req->timeout);
+		p = (struct supervisor *)supervisor_add_client(ctx, req->pid, req->label, req->timeout);
 		if (!p) {
 			req->cmd   = WDOG_CMD_ERROR;
 			req->error = errno;
@@ -314,10 +347,6 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 			next_ack(p, req);
 			DEBUG("%s[%d] next ack: %d", req->label, req->pid,
 			      req->next_ack);
-
-			/* Allow for some scheduling slack */
-			uev_timer_init(ctx, &p->watcher, timeout_cb, p,
-				       p->timeout + 500, p->timeout + 500);
 		}
 		break;
 
@@ -405,7 +434,8 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 	case WDOG_LIST_SUPV_CLIENTS_CMD:
 		for (i = 0, clients_cnt = 0; i < NELEMS(process); i++) {
 			if (process[i].id != -1) {
-				LOG("Process: %d, id: %d, label: %s, timeout: %d", i, process[i].id, process[i].pid, process[i].label, process[i].timeout);
+				printf("Process: %d, id: %d, pid: %d, label: %s, timeout: %d", i, process[i].id, process[i].pid, process[i].label, process[i].timeout);
+				LOG("Process: %d, id: %d, pid: %d, label: %s, timeout: %d", i, process[i].id, process[i].pid, process[i].label, process[i].timeout);
 				clients_cnt++;
 			}
 		}

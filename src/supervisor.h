@@ -20,7 +20,7 @@
 
 int supervisor_init   (uev_ctx_t *ctx, int enabled, int realtime, char *script);
 int supervisor_exit   (uev_ctx_t *ctx);
-
+void *supervisor_add_client(uev_ctx_t *ctx, pid_t pid, char *label, unsigned int timeout);
 int supervisor_enable (int enable);
 
 #endif /* WDOG_SUPERVISOR_H_ */
