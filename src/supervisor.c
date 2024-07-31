@@ -294,6 +294,8 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 {
 	struct supervisor *p;
 	wdog_reason_t *reason;
+	size_t i;
+	size_t clients_cnt;
 
 	if (!supervisor_enabled)
 		return 1;
@@ -398,6 +400,17 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 			req->cmd   = WDOG_CMD_ERROR;
 			req->error = errno;
 		}
+		break;
+
+	case WDOG_LIST_SUPV_CLIENTS_CMD:
+		for (i = 0, clients_cnt = 0; i < NELEMS(process); i++) {
+			if (process[i].id != -1) {
+				LOG("Process: %d, id: %d, label: %s, timeout: %d", i, process[i].id, process[i].pid, process[i].label, process[i].timeout);
+				clients_cnt++;
+			}
+		}
+		if(!clients_cnt)
+			LOG("Currently there is no client subscribed.");
 		break;
 
 	default:
