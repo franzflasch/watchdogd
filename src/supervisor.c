@@ -315,6 +315,7 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 	wdog_reason_t *reason;
 	size_t i;
 	size_t clients_cnt;
+	int mandatory_client_found = 0;
 
 	if (!supervisor_enabled)
 		return 1;
@@ -332,10 +333,15 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 					next_ack(p, req);
 					DEBUG("%s[%d] next ack: %d", req->label, req->pid,
 						req->next_ack);
+
+					mandatory_client_found = 1;
 					break;
 				}
 			}
 		}
+
+		if(mandatory_client_found)
+			break;
 
 		/* Start timer, return ID from allocated timer. */
 		DEBUG("Hello %s[%d].", req->label, req->pid);
