@@ -291,6 +291,42 @@ static void timeout_cb(uev_t *w, void *arg, int events)
 	action(w->ctx, p, WDOG_FAILED_TO_MEET_DEADLINE, 0);
 }
 
+static struct supervisor *check_for_mandatory_clients(wdog_t *req)
+{
+	struct supervisor *p = NULL;
+	size_t i;
+
+	/* first check if a matching mandatory client exists */
+	for (i = 0; i < NELEMS(process); i++) {
+		if (process[i].id != -1) {
+			if(!strcmp(req->label, process[i].label)) {
+				p = &process[i];
+				break;
+			}
+		}
+	}
+
+	return p;
+}
+
+/* Allocates a new client and starts the timer */
+void *supervisor_add_client(uev_ctx_t *ctx, pid_t pid, char *label, unsigned int timeout)
+{
+	struct supervisor *p;
+
+	p = allocate(pid, label, timeout);
+	if (p) {
+		uev_timer_init(ctx, &p->watcher, timeout_cb, p,
+					p->timeout + 500, p->timeout + 500);
+	}
+	else
+	{
+		PERROR("error allocating resource!\n");
+	}
+
+	return p;
+}
+
 int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 {
 	struct supervisor *p;
@@ -304,9 +340,20 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 
 	switch (req->cmd) {
 	case WDOG_SUBSCRIBE_CMD:
+		/* check if this is one of the mandatory clients */
+		p = check_for_mandatory_clients(req);
+		if(p) {
+			/* update to the actual pid */
+			p->pid = req->pid;
+			next_ack(p, req);
+			DEBUG("%s[%d] next ack: %d", req->label, req->pid,
+				req->next_ack);
+			break;
+		}
+
 		/* Start timer, return ID from allocated timer. */
 		DEBUG("Hello %s[%d].", req->label, req->pid);
-		p = allocate(req->pid, req->label, req->timeout);
+		p = (struct supervisor *)supervisor_add_client(ctx, req->pid, req->label, req->timeout);
 		if (!p) {
 			req->cmd   = WDOG_CMD_ERROR;
 			req->error = errno;
@@ -314,10 +361,6 @@ int supervisor_cmd(uev_ctx_t *ctx, wdog_t *req)
 			next_ack(p, req);
 			DEBUG("%s[%d] next ack: %d", req->label, req->pid,
 			      req->next_ack);
-
-			/* Allow for some scheduling slack */
-			uev_timer_init(ctx, &p->watcher, timeout_cb, p,
-				       p->timeout + 500, p->timeout + 500);
 		}
 		break;
 

@@ -159,6 +159,9 @@ static int supervisor(uev_ctx_t *ctx, cfg_t *cfg)
 {
 	char *script;
 	int enabled, prio;
+	int client_count;
+	int i;
+	int ret;
 
 	if (!cfg)
 		return supervisor_init(ctx, 0, 0, NULL);
@@ -167,7 +170,20 @@ static int supervisor(uev_ctx_t *ctx, cfg_t *cfg)
 	prio    = cfg_getint(cfg, "priority");
 	script  = cfg_getstr(cfg, "script");
 
-	return supervisor_init(ctx, enabled, prio, script);
+	ret = supervisor_init(ctx, enabled, prio, script);
+	if (ret)
+		return ret;
+
+	/* Add mandatory clients if there are any */
+	client_count = cfg_size(cfg, "mandatory-client");
+	for (i=0;i<client_count;i++) {
+		cfg_t *client = cfg_getnsec(cfg, "mandatory-client", i);
+		int timeout = cfg_getint(client, "timeout");
+		LOG("Adding mandatory client: %d, label: %s, timeout: %d\n", i, cfg_title(client), timeout);
+		supervisor_add_client(ctx, -1, (char *)cfg_title(client), timeout);
+	}
+
+	return 0;
 }
 
 static int validate_priority(cfg_t *cfg, cfg_opt_t *opt)
@@ -215,10 +231,15 @@ int conf_parse_file(uev_ctx_t *ctx, char *file)
 		CFG_BOOL("safe-exit",   cfg_true, CFGF_NONE),
 		CFG_END()
 	};
+	cfg_opt_t mandatory_client_opts[] = {
+		CFG_INT("timeout", 0, CFGF_NONE),
+		CFG_END()
+	};
 	cfg_opt_t supervisor_opts[] =  {
 		CFG_BOOL("enabled",  cfg_false, CFGF_NONE),
 		CFG_INT ("priority", 0, CFGF_NONE),
 		CFG_STR ("script",   NULL, CFGF_NONE),
+		CFG_SEC("mandatory-client", mandatory_client_opts, CFGF_TITLE | CFGF_MULTI),
 		CFG_END()
 	};
 	cfg_opt_t reset_reason_opts[] =  {
